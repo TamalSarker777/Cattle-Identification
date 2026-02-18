@@ -15,10 +15,18 @@ def detect_blur(image_bgr, threshold: float):
     is_blur = score < threshold
     return is_blur, score
 
-def detect_lighting(image_bgr, threshold: float):
-    """Check average light intensity"""
-    # Convert to grayscale to get intensity
-    gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
+def detect_lighting(image_bgr, mask, threshold: float):
+    """Check average light intensity of the muzzle region"""
+    # Ensure the mask is binary and of type uint8
+    mask = mask.astype(np.uint8)
+
+    # Ensure mask size matches image size
+    if mask.shape[:2] != image_bgr.shape[:2]:
+        mask = cv2.resize(mask, (image_bgr.shape[1], image_bgr.shape[0]))
+
+    # Use the mask to only consider the muzzle region
+    masked_image = cv2.bitwise_and(image_bgr, image_bgr, mask=mask)
+    gray = cv2.cvtColor(masked_image, cv2.COLOR_BGR2GRAY)
     avg_intensity = np.mean(gray)
     is_dark = avg_intensity < threshold
     return is_dark, avg_intensity
@@ -45,7 +53,7 @@ uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
 # Add sliders for manual threshold setting
 st.sidebar.title("Adjust Thresholds")
 BLUR_THRESHOLD = st.sidebar.slider("Blur Threshold", min_value=0, max_value=200, value=120, step=1)
-LIGHT_THRESHOLD = st.sidebar.slider("Lighting Intensity Threshold", min_value=0, max_value=255, value=100, step=1)
+LIGHT_THRESHOLD = st.sidebar.slider("Lighting Intensity Threshold", min_value=0, max_value=255, value=75, step=1)
 REFLECTION_THRESHOLD = st.sidebar.slider("Reflection Intensity Threshold", min_value=0, max_value=255, value=200, step=1)
 
 if uploaded_file is not None:
@@ -57,31 +65,6 @@ if uploaded_file is not None:
     # Convert RGB to BGR for OpenCV
     image_bgr = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
 
-    # Check for blur detection
-    is_blurry, blur_score = detect_blur(image_bgr, BLUR_THRESHOLD)
-    st.subheader(f"Blur Score: {blur_score:.2f}")
-    st.subheader(f"Threshold: {BLUR_THRESHOLD}")
-    if is_blurry:
-        st.warning("Result: The Image is BLURRY ❌")
-    else:
-        st.success("Result: The Image is SHARP ✅")
-
-    # Check for lighting intensity (too dark?)
-    is_dark, avg_intensity = detect_lighting(image_bgr, LIGHT_THRESHOLD)
-    st.subheader(f"Average Intensity: {avg_intensity:.2f}")
-    if is_dark:
-        st.warning("Warning: The image is too DARK. Consider retaking the picture!")
-    else:
-        st.success("Lighting is good.")
-
-    # Check for reflections
-    reflection_intensity, reflection_mask = detect_reflection(image_bgr, REFLECTION_THRESHOLD)
-    st.subheader(f"Reflection Intensity: {reflection_intensity:.2f}")
-    if reflection_intensity > 0.1:  # If more than 10% of the image has reflections
-        st.warning("Warning: Reflections detected! Consider retaking the picture!")
-    else:
-        st.success("No significant reflections detected.")
-
     # Run YOLO segmentation
     results = model(image_np)
     result = results[0]
@@ -91,7 +74,7 @@ if uploaded_file is not None:
 
         # Get first mask
         mask = result.masks.data[0].cpu().numpy()
-        mask = (mask * 255).astype(np.uint8)
+        mask = (mask * 255).astype(np.uint8)  # Ensure mask is uint8
 
         # Resize mask to original image size
         mask = cv2.resize(mask, (image_np.shape[1], image_np.shape[0]))
@@ -120,6 +103,31 @@ if uploaded_file is not None:
             cropped_image,
             mask=cropped_mask
         )
+
+        # Check for blur detection on cropped image
+        is_blurry, blur_score = detect_blur(masked_cropped, BLUR_THRESHOLD)
+        st.subheader(f"Blur Score of Cropped Muzzle: {blur_score:.2f}")
+        st.subheader(f"Threshold: {BLUR_THRESHOLD}")
+        if is_blurry:
+            st.warning("Result: The Cropped Muzzle Image is BLURRY ❌")
+        else:
+            st.success("Result: The Cropped Muzzle Image is SHARP ✅")
+
+        # Check for lighting intensity (too dark?) on cropped image
+        is_dark, avg_intensity = detect_lighting(image_bgr, cropped_mask, LIGHT_THRESHOLD)
+        st.subheader(f"Average Intensity of Cropped Muzzle: {avg_intensity:.2f}")
+        if is_dark:
+            st.warning("Warning: The cropped muzzle image is too DARK. Consider retaking the picture!")
+        else:
+            st.success("Lighting is good in the cropped muzzle.")
+
+        # Check for reflections in the cropped image
+        reflection_intensity, reflection_mask = detect_reflection(masked_cropped, REFLECTION_THRESHOLD)
+        st.subheader(f"Reflection Intensity of Cropped Muzzle: {reflection_intensity:.2f}")
+        if reflection_intensity > 0.1:  # If more than 10% of the image has reflections
+            st.warning("Warning: Reflections detected in the cropped muzzle! Consider retaking the picture!")
+        else:
+            st.success("No significant reflections detected in the cropped muzzle.")
 
         # COLUMN LAYOUT
         col1, col2 = st.columns(2)
