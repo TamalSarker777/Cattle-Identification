@@ -1,0 +1,9 @@
+# YOLO dataset configuration for cattle muzzle segmentation training
+# Defines paths to train/val images, number of classes, and class names
+
+path: G:/tamal/my tasks/cattle identification V2/muzzle detection yolo/YOLO Segmentation (Mask)/train_dataset
+train: images/train 
+val: images/val  
+
+nc: 1
+names: ['muzzle']

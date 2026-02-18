@@ -1,0 +1,23 @@
+# Ignore the blur detection folder
+blur_detection/
+
+# Ignore the "YOLO Bounding Box" folder
+muzzle detection yolo/YOLO Bounding Box/
+
+# Ignore all image files
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+*.tiff
+*.JPG
+*.JPEG
+*.PNG
+*.GIF
+*.BMP
+*.TIFF
+
+# Ignore the training and validation images directories in YOLO Segmentation
+muzzle detection yolo/YOLO Segmentation (Mask)/train_dataset/images/train/
+muzzle detection yolo/YOLO Segmentation (Mask)/train_dataset/images/val/
