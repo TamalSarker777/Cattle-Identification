@@ -1,25 +1,8 @@
-"""
-Streamlit web application for interactive cattle muzzle segmentation and blur detection.
-Loads YOLO model, allows image upload, detects blur using Laplacian variance,
-runs segmentation, and displays original, overlay, masked crop, and tight cropped muzzle.
-"""
-
 import streamlit as st
 import cv2
 import numpy as np
 from PIL import Image
 from ultralytics import YOLO
-
-# Load YOLO mode
-@st.cache_resource
-def load_model():
-    model = YOLO("G:/tamal/my tasks/cattle identification V2/muzzle detection yolo/YOLO Segmentation (Mask)/runs/segment/train5/weights/best.pt")
-    return model
-
-model = load_model()
-
-# CONFIG
-BLUR_THRESHOLD = 120.0  # Tune if needed
 
 # FUNCTIONS
 def blur_score_laplacian(image_bgr) -> float:
@@ -32,10 +15,38 @@ def detect_blur(image_bgr, threshold: float):
     is_blur = score < threshold
     return is_blur, score
 
+def detect_lighting(image_bgr, threshold: float):
+    """Check average light intensity"""
+    # Convert to grayscale to get intensity
+    gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
+    avg_intensity = np.mean(gray)
+    is_dark = avg_intensity < threshold
+    return is_dark, avg_intensity
+
+def detect_reflection(image_bgr, threshold: float):
+    """Detect reflection by looking for high-intensity regions"""
+    reflection_mask = image_bgr > threshold
+    reflection_intensity = np.sum(reflection_mask) / (image_bgr.size)
+    return reflection_intensity, reflection_mask
+
+# Load YOLO model
+@st.cache_resource
+def load_model():
+    model = YOLO("G:/tamal/my tasks/cattle identification V2/Cattle-Identification/muzzle detection yolo/YOLO Segmentation (Mask)/runs/segment/train5/weights/best.pt")
+    return model
+
+model = load_model()
+
 # Streamlit app
-st.title("🐄 Cattle Muzzle Segmentation Viewer with Blur Detection")
+st.title("🐄 Cattle Muzzle Segmentation Viewer with Intensity and Blur Detection")
 
 uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
+
+# Add sliders for manual threshold setting
+st.sidebar.title("Adjust Thresholds")
+BLUR_THRESHOLD = st.sidebar.slider("Blur Threshold", min_value=0, max_value=200, value=120, step=1)
+LIGHT_THRESHOLD = st.sidebar.slider("Lighting Intensity Threshold", min_value=0, max_value=255, value=100, step=1)
+REFLECTION_THRESHOLD = st.sidebar.slider("Reflection Intensity Threshold", min_value=0, max_value=255, value=200, step=1)
 
 if uploaded_file is not None:
 
@@ -46,20 +57,34 @@ if uploaded_file is not None:
     # Convert RGB to BGR for OpenCV
     image_bgr = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
 
-    # Run YOLO segmentation
-    results = model(image_np)
-    result = results[0]
-
     # Check for blur detection
     is_blurry, blur_score = detect_blur(image_bgr, BLUR_THRESHOLD)
-
-    # Display blur result
     st.subheader(f"Blur Score: {blur_score:.2f}")
     st.subheader(f"Threshold: {BLUR_THRESHOLD}")
     if is_blurry:
-        st.warning("Result: BLURRY ❌")
+        st.warning("Result: The Image is BLURRY ❌")
     else:
-        st.success("Result: SHARP ✅")
+        st.success("Result: The Image is SHARP ✅")
+
+    # Check for lighting intensity (too dark?)
+    is_dark, avg_intensity = detect_lighting(image_bgr, LIGHT_THRESHOLD)
+    st.subheader(f"Average Intensity: {avg_intensity:.2f}")
+    if is_dark:
+        st.warning("Warning: The image is too DARK. Consider retaking the picture!")
+    else:
+        st.success("Lighting is good.")
+
+    # Check for reflections
+    reflection_intensity, reflection_mask = detect_reflection(image_bgr, REFLECTION_THRESHOLD)
+    st.subheader(f"Reflection Intensity: {reflection_intensity:.2f}")
+    if reflection_intensity > 0.1:  # If more than 10% of the image has reflections
+        st.warning("Warning: Reflections detected! Consider retaking the picture!")
+    else:
+        st.success("No significant reflections detected.")
+
+    # Run YOLO segmentation
+    results = model(image_np)
+    result = results[0]
 
     # Run YOLO segmentation
     if result.masks is not None:
@@ -71,11 +96,9 @@ if uploaded_file is not None:
         # Resize mask to original image size
         mask = cv2.resize(mask, (image_np.shape[1], image_np.shape[0]))
 
-
         # Create overlay
         overlay = image_np.copy()
         overlay[mask > 0] = [0, 255, 0]
-
 
         # Tight Bounding Box
         ys, xs = np.where(mask > 0)
@@ -97,7 +120,6 @@ if uploaded_file is not None:
             cropped_image,
             mask=cropped_mask
         )
-
 
         # COLUMN LAYOUT
         col1, col2 = st.columns(2)

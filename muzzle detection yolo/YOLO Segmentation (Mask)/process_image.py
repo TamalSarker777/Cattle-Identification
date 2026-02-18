@@ -11,6 +11,8 @@ from ultralytics import YOLO
 
 # CONFIG
 BLUR_THRESHOLD = 120.0  # Tune if needed
+LIGHT_THRESHOLD = 100.0  # Average pixel intensity threshold for lighting
+REFLECTION_THRESHOLD = 200  # Pixel intensity threshold to detect reflections
 
 # FUNCTIONS
 def blur_score_laplacian(image_bgr) -> float:
@@ -23,9 +25,23 @@ def detect_blur(image_bgr, threshold: float):
     is_blur = score < threshold
     return is_blur, score
 
+def detect_lighting(image_bgr, threshold: float):
+    """Check average light intensity"""
+    # Convert to grayscale to get intensity
+    gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
+    avg_intensity = np.mean(gray)
+    is_dark = avg_intensity < threshold
+    return is_dark, avg_intensity
+
+def detect_reflection(image_bgr, threshold: float):
+    """Detect reflection by looking for high-intensity regions"""
+    reflection_mask = image_bgr > threshold
+    reflection_intensity = np.sum(reflection_mask) / (image_bgr.size)
+    return reflection_intensity, reflection_mask
+
 # Load YOLO model
 def load_model():
-    model = YOLO("G:/tamal/my tasks/cattle identification V2/muzzle detection yolo/YOLO Segmentation (Mask)/runs/segment/train5/weights/best.pt")
+    model = YOLO("G:/tamal/my tasks/cattle identification V2/Cattle-Identification/muzzle detection yolo/YOLO Segmentation (Mask)/runs/segment/train5/weights/best.pt")
     return model
 
 model = load_model()
@@ -38,19 +54,34 @@ def process_image(image_path):
     # Convert RGB to BGR for OpenCV
     image_bgr = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
 
-    # Run YOLO segmentation
-    results = model(image_np)
-    result = results[0]
-
     # Check for blur detection
     is_blurry, blur_score = detect_blur(image_bgr, BLUR_THRESHOLD)
-
     print(f"Blur Score: {blur_score:.2f}")
     print(f"Threshold: {BLUR_THRESHOLD}")
     if is_blurry:
-        print("Result: The Image is BLURRY ")
+        print("Result: The Image is BLURRY ❌")
     else:
-        print("Result: The Image is SHARP ")
+        print("Result: The Image is SHARP ✅")
+
+    # Check for lighting intensity (too dark?)
+    is_dark, avg_intensity = detect_lighting(image_bgr, LIGHT_THRESHOLD)
+    print(f"Average Intensity: {avg_intensity:.2f}")
+    if is_dark:
+        print("Warning: The image is too DARK. Consider retaking the picture!")
+    else:
+        print("Lighting is good.")
+
+    # Check for reflections
+    reflection_intensity, reflection_mask = detect_reflection(image_bgr, REFLECTION_THRESHOLD)
+    print(f"Reflection Intensity: {reflection_intensity:.2f}")
+    if reflection_intensity > 0.1:  # If more than 10% of the image has reflections
+        print("Warning: Reflections detected! Consider retaking the picture!")
+    else:
+        print("No significant reflections detected.")
+
+    # Run YOLO segmentation
+    results = model(image_np)
+    result = results[0]
 
     # Run YOLO segmentation
     if result.masks is not None:
@@ -101,5 +132,6 @@ def process_image(image_path):
         print("No muzzle detected.")
 
 # Provide image file path here
-image_path = "G:/tamal/my tasks/cattle identification V2/muzzle detection yolo/YOLO Segmentation (Mask)/train_dataset/images/val/muzzle_00353.jpg"  
+image_path = "G:/tamal/my tasks/cattle identification V2/Cattle-Identification/muzzle detection yolo/YOLO Segmentation (Mask)/train_dataset/images/val/muzzle_00369.jpg"  
 process_image(image_path)
+
